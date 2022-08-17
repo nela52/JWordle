@@ -1,0 +1,6 @@
+package me.an.jw;
+
+public enum LetterPos
+{
+	PRESENT, CORRECT, ABSENT;
+}

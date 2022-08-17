@@ -1,0 +1,4 @@
+INDEX VERSION 1.131+D:\My Stuff\JWordle\.metadata\.plugins\org.eclipse.jdt.core
+1671692264.index
+1865797976.index
+4148261267.index

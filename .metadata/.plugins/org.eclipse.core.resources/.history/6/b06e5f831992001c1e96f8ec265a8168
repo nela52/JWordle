@@ -1,0 +1,357 @@
+package me.an.jw;
+
+import static me.an.jw.JWUtil.sleep;
+import static me.an.jw.JWordle.WORD_LEN;
+
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.GridLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
+import java.util.HashMap;
+import java.util.Map;
+
+import javax.swing.BorderFactory;
+import javax.swing.BoxLayout;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
+import javax.swing.border.BevelBorder;
+
+import me.an.jw.alert.Alert;
+import me.an.jw.alert.AlertType;;
+
+public class MainWindow extends EmptyWindow
+{
+	public static final String[] KEYBOARD = { "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM" };
+
+	private final int ROW_NUM = WORD_LEN;
+	private final int COL_NUM = WORD_LEN;
+	private JLabel[][] labels = new JLabel[ROW_NUM][COL_NUM];
+
+	private int currentRow = 0, currentCol = 0;
+
+	private String currentWord = Dictionary.randomWord().toUpperCase();
+	private Map<Character, Integer> wordLetters = new HashMap<Character, Integer>();
+	private Map<Character, Integer> solvedLetters = new HashMap<Character, Integer>();
+	private Map<Character, Integer> revealedLetters = new HashMap<Character, Integer>();
+
+	private Map<Character, JButton> keyButtons = new HashMap<Character, JButton>();
+
+	public static final Color BACKGROUND = Color.GRAY;
+	public static final Color SEPARATOR = BACKGROUND.darker();
+	public static final Color DARK = SEPARATOR.darker();
+	public static final Color BUTTON = new Color(170, 170, 170);
+
+	public MainWindow()
+	{
+		super("JWordle", JFrame.EXIT_ON_CLOSE);
+		for (char c : currentWord.toCharArray())
+			wordLetters.put(c, !wordLetters.containsKey(c) ? 1 : wordLetters.get(c) + 1);
+		System.out.println(currentWord);
+	}
+
+	private JPanel createWordPanel()
+	{
+		JPanel wordPanel = new JPanel(new GridLayout(ROW_NUM, COL_NUM, 1, 1));
+		wordPanel.setBackground(SEPARATOR);
+
+		for (int row = 0; row < ROW_NUM; row++)
+		{
+			for (int col = 0; col < COL_NUM; col++)
+			{
+				JLabel label = new JLabel();
+				label.setOpaque(true);
+				label.setBackground(BACKGROUND);
+				label.setHorizontalAlignment(JLabel.CENTER);
+				label.setFont(label.getFont().deriveFont(50f));
+
+				Dimension size = new Dimension(100, 100);
+				label.setPreferredSize(size);
+				label.setMinimumSize(size);
+				label.setMaximumSize(size);
+
+				wordPanel.add(label);
+				labels[row][col] = label;
+			}
+		}
+
+		return wordPanel;
+	}
+
+	private void enterCharacter(char c)
+	{
+		if (currentCol + 1 > COL_NUM)
+			return;
+		labels[currentRow][currentCol++].setText(String.valueOf(c));
+	}
+
+	private void removeCharacter()
+	{
+		if (currentCol - 1 < 0)
+			return;
+		labels[currentRow][--currentCol].setText("");
+	}
+
+	private String getEnteredWord()
+	{
+		if (labels[currentRow][COL_NUM - 1].getText().isEmpty())
+			return null;
+
+		String word = "";
+		for (int col = 0; col < COL_NUM; col++)
+			word += labels[currentRow][col].getText();
+		return word;
+	}
+
+	private void enterWord()
+	{
+		String enteredWord = getEnteredWord();
+		if (enteredWord == null)
+			return;
+
+		if (!Dictionary.isValidWord(enteredWord))
+		{
+			Alert.showAlert("Not a valid word!", 1000, AlertType.INFO);
+			return;
+		}
+
+		LetterState[] letterStates = evalRow();
+		new Thread(new Runnable()
+		{
+			public void run()
+			{
+				for (LetterState state : letterStates)
+				{
+					switch (state)
+					{
+					case ABSENT:
+						break;
+					case CORRECT:
+						break;
+					case PRESENT:
+						break;
+					}
+					sleep(250);
+				}
+
+				if (enteredWord.equalsIgnoreCase(currentWord))
+				{
+					showEndDialog(true);
+					return;
+				}
+
+				if (currentRow + 1 >= ROW_NUM)
+				{
+					showEndDialog(false);
+					return;
+				}
+
+				currentRow++;
+				currentCol = 0;
+			}
+		}).start();
+	}
+
+	private LetterState[] evalRow()
+	{
+		String enteredWord = getEnteredWord();
+
+		LetterState[] letterStates = new LetterState[WORD_LEN];
+		for (int i = 0; i < letterStates.length; i++)
+			letterStates[i] = LetterState.ABSENT;
+
+		boolean[] t = new boolean[WORD_LEN];
+		for (int i = 0; i < t.length; i++)
+			t[i] = true;
+
+		boolean[] n = new boolean[WORD_LEN];
+		for (int i = 0; i < n.length; i++)
+			n[i] = true;
+
+		for (int o = 0; o < WORD_LEN; o++)
+		{
+			if (enteredWord.charAt(o) == currentWord.charAt(o) && n[o])
+			{
+				letterStates[o] = LetterState.CORRECT;
+				t[o] = !t[o];
+				n[o] = !n[o];
+			}
+		}
+
+		for (int enteredIndex = 0; enteredIndex < WORD_LEN; enteredIndex++)
+		{
+			char enteredChar = enteredWord.charAt(enteredIndex);
+			if (t[enteredIndex])
+			{
+				for (int correctIndex = 0; correctIndex < WORD_LEN; correctIndex++)
+				{
+					char correctChar = currentWord.charAt(correctIndex);
+					if (n[correctIndex] && enteredChar == correctChar)
+					{
+						letterStates[enteredIndex] = LetterState.PRESENT;
+						n[correctIndex] = !n[correctIndex];
+						break;
+					}
+				}
+			}
+		}
+
+		return letterStates;
+	}
+
+	private void showEndDialog(boolean win)
+	{
+		JLabel label = new JLabel(win ? "You win! Good job!" : "You lose! The word was " + currentWord.toLowerCase() + ".");
+
+		int option = JOptionPane.showOptionDialog(null, label, "Info", JOptionPane.YES_NO_OPTION, JOptionPane.INFORMATION_MESSAGE, null, new String[] { "Play Again", "Exit" }, null);
+		if (option == 0) //Play again
+			reset();
+		else if (option == 1) //Exit
+			System.exit(0);
+	}
+
+	private JPanel createKeyboardPanel()
+	{
+		JPanel keyPanel = new JPanel();
+		keyPanel.setLayout(new BoxLayout(keyPanel, BoxLayout.Y_AXIS));
+		keyPanel.setBackground(SEPARATOR);
+		keyPanel.setBorder(BorderFactory.createBevelBorder(BevelBorder.LOWERED));
+
+		for (int i = 0; i < KEYBOARD.length; i++)
+		{
+			String row = KEYBOARD[i];
+
+			JPanel rowPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 2, 2));
+			rowPanel.setBackground(SEPARATOR);
+			keyPanel.add(rowPanel);
+
+			if (i == 2)
+			{
+				JButton enterButton = new JButton("ENTER");
+				enterButton.setBackground(BUTTON);
+				enterButton.setBorderPainted(false);
+				enterButton.addActionListener(new ActionListener()
+				{
+					public void actionPerformed(ActionEvent e)
+					{
+						enterWord();
+					}
+				});
+				rowPanel.add(enterButton);
+			}
+
+			for (final char c : row.toCharArray())
+			{
+				JButton keyButton = new JButton(String.valueOf(c));
+				keyButton.setBackground(BUTTON);
+				keyButton.setBorderPainted(false);
+				keyButton.addActionListener(new ActionListener()
+				{
+					public void actionPerformed(ActionEvent e)
+					{
+						enterCharacter(c);
+					}
+				});
+				rowPanel.add(keyButton);
+				keyButtons.put(c, keyButton);
+			}
+
+			if (i == 2)
+			{
+				JButton backButton = new JButton("<-");
+				backButton.setBackground(BUTTON);
+				backButton.setBorderPainted(false);
+				backButton.addActionListener(new ActionListener()
+				{
+					public void actionPerformed(ActionEvent e)
+					{
+						removeCharacter();
+					}
+				});
+				rowPanel.add(backButton);
+			}
+		}
+
+		return keyPanel;
+	}
+
+	private void reset()
+	{
+		for (int row = 0; row < ROW_NUM; row++)
+		{
+			for (int col = 0; col < COL_NUM; col++)
+			{
+				JLabel label = labels[row][col];
+				label.setText("");
+				label.setBackground(BACKGROUND);
+			}
+		}
+
+		for (JButton button : keyButtons.values())
+			button.setBackground(BUTTON);
+
+		currentRow = 0;
+		currentCol = 0;
+
+		currentWord = Dictionary.randomWord().toUpperCase();
+		for (char c : currentWord.toCharArray())
+			wordLetters.put(c, !wordLetters.containsKey(c) ? 1 : wordLetters.get(c) + 1);
+		solvedLetters.clear();
+	}
+
+	private void requestKeyFocus()
+	{
+		SwingUtilities.invokeLater(new Runnable()
+		{
+			public void run()
+			{
+				container.grabFocus();
+				container.requestFocus();
+			}
+		});
+	}
+
+	public void addComponents()
+	{
+		container.setLayout(new BoxLayout(container, BoxLayout.Y_AXIS));
+
+		container.add(createWordPanel());
+		container.add(createKeyboardPanel());
+
+		container.addKeyListener(new KeyAdapter()
+		{
+			public void keyReleased(KeyEvent e)
+			{
+				char c = e.getKeyChar();
+				if (Character.isAlphabetic(c))
+					enterCharacter(Character.toUpperCase(c));
+				else
+				{
+					int keyCode = e.getKeyCode();
+					if (keyCode == KeyEvent.VK_ENTER)
+						enterWord();
+					else if (keyCode == KeyEvent.VK_BACK_SPACE)
+						removeCharacter();
+				}
+			}
+		});
+
+		container.addFocusListener(new FocusAdapter()
+		{
+			public void focusLost(FocusEvent e)
+			{
+				requestKeyFocus();
+			}
+		});
+		requestKeyFocus();
+	}
+}
